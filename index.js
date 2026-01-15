@@ -1,68 +1,62 @@
-const express = require('express');
-const { Client, LocalAuth } = require('whatsapp-web.js');
-const qrcode = require('qrcode');
+const express = require("express");
+const bodyParser = require("body-parser");
+const axios = require("axios");
+require('dotenv').config();
 
 const app = express();
-const port = process.env.PORT || 3000;
+app.use(bodyParser.json());
 
-let qrCodeData = '';
-let clientReady = false;
+// Variables de entorno
+const token = process.env.WHATSAPP_TOKEN; 
+const myVerifyToken = process.env.VERIFY_TOKEN; 
 
-const client = new Client({
-    authStrategy: new LocalAuth({ dataPath: './auth_info' }),
-    puppeteer: {
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage'],
-        headless: true
-    }
+app.listen(process.env.PORT || 3000, () => {
+  console.log("🚀 Servidor Oficial LUMMET listo y limpio.");
 });
 
-client.on('qr', (qr) => {
-    console.log('NUEVO QR GENERADO');
-    qrcode.toDataURL(qr, (err, url) => {
-        qrCodeData = url;
+// VERIFICACIÓN
+app.get("/webhook", (req, res) => {
+  const mode = req.query["hub.mode"];
+  const token = req.query["hub.verify_token"];
+  const challenge = req.query["hub.challenge"];
+
+  if (mode && token) {
+    if (mode === "subscribe" && token === myVerifyToken) {
+      console.log("WEBHOOK VERIFICADO");
+      res.status(200).send(challenge);
+    } else {
+      res.sendStatus(403);
+    }
+  }
+});
+
+// MENSAJES
+app.post("/webhook", async (req, res) => {
+  const body = req.body;
+  if (body.object) {
+      // Solo confirmamos recepción para que Facebook no moleste
+      res.sendStatus(200);
+
+      if (body.entry && body.entry[0].changes && body.entry[0].changes[0].value.messages) {
+        const phone_id = body.entry[0].changes[0].value.metadata.phone_number_id;
+        const from = body.entry[0].changes[0].value.messages[0].from;
+        const msg = body.entry[0].changes[0].value.messages[0].text.body;
+
+        // Responder el saludo
+        await enviarMensaje(phone_id, from, "¡Hola! Bienvenido a LUMMET Oficial 🇧🇴. ¿En qué te ayudamos?");
+      }
+  } else {
+    res.sendStatus(404);
+  }
+});
+
+async function enviarMensaje(phoneId, to, text) {
+  try {
+    await axios({
+      method: "POST",
+      url: `https://graph.facebook.com/v17.0/${phoneId}/messages`,
+      data: { messaging_product: "whatsapp", to: to, text: { body: text } },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     });
-});
-
-client.on('ready', () => {
-    console.log('✅ WhatsApp Conectado!');
-    clientReady = true;
-    qrCodeData = '';
-});
-
-// RESPUESTAS AUTOMÁTICAS
-client.on('message', async msg => {
-    try {
-        const chat = await msg.getChat();
-        const mensaje = msg.body.toLowerCase();
-
-        // Pausa aleatoria entre 2 y 5 segundos (Anti-Ban)
-        const delay = Math.floor(Math.random() * 3000) + 2000;
-        
-        // EJEMPLO: Si escriben "precio"
-        if (mensaje.includes('precio') || mensaje.includes('costo')) {
-            await new Promise(r => setTimeout(r, delay)); 
-            chat.sendStateTyping(); 
-            await new Promise(r => setTimeout(r, 2000)); 
-            msg.reply('Hola, nuestros precios están en Bolivianos (Bs). ¿Qué modelo buscas?');
-        }
-    } catch (error) {
-        console.error(error);
-    }
-});
-
-client.initialize();
-
-// PÁGINA WEB PARA VER EL QR
-app.get('/', (req, res) => {
-    if (clientReady) return res.send('<h1>🤖 Bot Activo y Escuchando 24/7</h1>');
-    if (qrCodeData) return res.send(`
-        <h1>Escanea este QR con tu celular:</h1>
-        <img src="${qrCodeData}">
-        <p>Si no carga, recarga la página en 10 segundos.</p>
-    `);
-    res.send('<h1>Cargando... espera unos segundos y recarga.</h1>');
-});
-
-app.listen(port, () => console.log(`Servidor escuchando en puerto ${port}`));  
-
+  } catch (e) { console.error("Error envío:", e.response ? e.response.data : e.message); }
+}

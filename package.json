@@ -1,5 +1,5 @@
 {
-  "name": "whatsapp-api-free",
+  "name": "lummet-api-oficial",
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
@@ -7,7 +7,8 @@
   },
   "dependencies": {
     "express": "^4.18.2",
-    "qrcode": "^1.5.3",
-    "whatsapp-web.js": "^1.23.0"
+    "body-parser": "^1.20.2",
+    "axios": "^1.4.0",
+    "dotenv": "^16.3.1"
   }
-}  
+}
