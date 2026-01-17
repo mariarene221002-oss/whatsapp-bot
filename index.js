@@ -6,93 +6,88 @@ require('dotenv').config();
 const app = express();
 app.use(bodyParser.json());
 
-// CONFIGURACIÓN: Render tomará esto de tus Variables de Entorno
+// TUS CREDENCIALES (Las tomará de Render)
 const token = process.env.WHATSAPP_TOKEN; 
 const myVerifyToken = process.env.VERIFY_TOKEN; 
 
+// MENSAJE DE ARRANQUE
 app.listen(process.env.PORT || 3000, () => {
-  console.log("🚀 Servidor Oficial LUMMET listo y escuchando...");
+  console.log("🚀 SISTEMA LUMMET REINICIADO Y LISTO.");
 });
 
-// 1. VERIFICACIÓN DEL WEBHOOK (Cuando le das al botón "Verificar" en Facebook)
+// RUTAS
+
+// 1. RUTA PRINCIPAL (Para verificar que el servidor vive)
+app.get("/", (req, res) => {
+  res.send("🤖 EL BOT DE LUMMET ESTÁ VIVO Y ESPERANDO MENSAJES.");
+});
+
+// 2. VERIFICACIÓN DEL WEBHOOK (El saludo de mano con Facebook)
 app.get("/webhook", (req, res) => {
   const mode = req.query["hub.mode"];
-  const token = req.query["hub.verify_token"];
   const challenge = req.query["hub.challenge"];
+  const verify_token = req.query["hub.verify_token"];
 
-  if (mode && token) {
-    if (mode === "subscribe" && token === myVerifyToken) {
-      console.log("✅ WEBHOOK VERIFICADO CORRECTAMENTE");
+  console.log("🔎 INTENTO DE VERIFICACIÓN DE FACEBOOK...");
+
+  if (mode && verify_token) {
+    if (mode === "subscribe" && verify_token === myVerifyToken) {
+      console.log("✅ WEBHOOK VERIFICADO CORRECTAMENTE.");
       res.status(200).send(challenge);
     } else {
+      console.log("❌ FALLO DE VERIFICACIÓN: Token incorrecto.");
       res.sendStatus(403);
     }
   }
 });
 
-// 2. RECIBIR MENSAJES DE CLIENTES
+// 3. RECIBIR MENSAJES (El oído del bot)
 app.post("/webhook", async (req, res) => {
   const body = req.body;
 
-  // [DIAGNÓSTICO] Esto imprimirá en Render TODO lo que llegue de Facebook
-  console.log("📨 LLEGO ALGO DE FACEBOOK:", JSON.stringify(body, null, 2));
+  // [DIAGNÓSTICO] ¡Esto nos dirá si entra algo!
+  console.log("📨 PAQUETE RECIBIDO DE FACEBOOK:", JSON.stringify(body, null, 2));
 
   if (body.object) {
-    // Avisamos a Facebook que recibimos el aviso (Status 200)
+    // IMPORTANTE: Responder a Facebook rápido para que no reintente
     res.sendStatus(200);
 
-    // Verificamos si es un mensaje de texto válido
-    if (
-      body.entry &&
-      body.entry[0].changes &&
-      body.entry[0].changes[0].value.messages &&
-      body.entry[0].changes[0].value.messages[0]
-    ) {
+    // Verificar si es un mensaje real
+    if (body.entry && body.entry[0].changes && body.entry[0].changes[0].value.messages) {
+      const messageInfo = body.entry[0].changes[0].value.messages[0];
       const phone_number_id = body.entry[0].changes[0].value.metadata.phone_number_id;
-      const from = body.entry[0].changes[0].value.messages[0].from;
-      const msg_body = body.entry[0].changes[0].value.messages[0].text.body.toLowerCase(); // Convertimos a minúsculas
+      const from = messageInfo.from;
+      const msg_body = messageInfo.text ? messageInfo.text.body.toLowerCase() : "";
 
-      console.log(`💬 Mensaje recibido de ${from}: ${msg_body}`);
+      console.log(`💬 MENSAJE DE CLIENTE (${from}): ${msg_body}`);
 
-      // --- RESPUESTAS AUTOMÁTICAS DE LUMMET ---
-      let respuestaTexto = "";
+      // LÓGICA DE RESPUESTA LUMMET
+      let respuesta = "";
 
       if (msg_body.includes("hola") || msg_body.includes("buenas")) {
-        respuestaTexto = "¡Hola! Bienvenido a *LUMMET* 🇧🇴.\n\nSomos expertos en iluminación para vehículos y hogar en Santa Cruz.\n\n¿Qué buscas hoy?\n💡 *Exploradoras*\n🏠 *Iluminación Hogar*\n🏍️ *Accesorios Moto*";
-      } 
-      else if (msg_body.includes("precio") || msg_body.includes("costo")) {
-        respuestaTexto = "Para darte el precio exacto, ¿podrías decirme qué modelo o producto necesitas?";
-      }
-      else {
-        respuestaTexto = "Gracias por escribir a LUMMET. Un asesor revisará tu consulta en breve.";
+        respuesta = "¡Hola! Bienvenido a *LUMMET* 🇧🇴.\n\nEspecialistas en iluminación vehicular y hogar en Santa Cruz.\n\n¿En qué podemos ayudarte hoy?";
+      } else {
+        respuesta = "Gracias por escribir a LUMMET. Un asesor revisará tu mensaje.";
       }
 
-      // Enviar la respuesta
-      await sendMessage(phone_number_id, from, respuestaTexto);
+      await enviarMensaje(phone_number_id, from, respuesta);
     }
   } else {
     res.sendStatus(404);
   }
 });
 
-// FUNCIÓN PARA ENVIAR EL MENSAJE A WHATSAPP
-async function sendMessage(phoneId, to, text) {
+// FUNCIÓN DE ENVÍO
+async function enviarMensaje(phoneId, to, text) {
   try {
     await axios({
       method: "POST",
       url: `https://graph.facebook.com/v17.0/${phoneId}/messages`,
-      data: {
-        messaging_product: "whatsapp",
-        to: to,
-        text: { body: text },
-      },
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      data: { messaging_product: "whatsapp", to: to, text: { body: text } },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     });
-    console.log("✅ Respuesta enviada exitosamente");
+    console.log("📤 RESPUESTA ENVIADA CON ÉXITO");
   } catch (error) {
-    console.error("❌ ERROR ENVIANDO MENSAJE:", error.response ? error.response.data : error.message);
+    console.error("❌ ERROR AL ENVIAR:", error.response ? error.response.data : error.message);
   }
 }
